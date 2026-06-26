@@ -1,7 +1,6 @@
 use clap::Parser;
-use snmp2::{SyncSession, Value};
+use snmp2::{Oid, SyncSession, Value, Version};
 use std::collections::BTreeMap;
-use std::net::SocketAddr;
 use std::time::Duration;
 
 /// SNMP network interface table viewer
@@ -72,16 +71,11 @@ fn snmp_walk(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'s
     let mut current: Vec<u32> = base_oid.to_vec();
 
     loop {
-        // snmp2 v0.3.x: OID is passed as &[u32] directly, no ObjectIdentifier wrapper
-        match sess.getnext(&[current.as_slice()]) {
+        let oid = Oid::from(current.as_slice());
+        match sess.getnext(&oid) {
             Ok(response) => {
                 if let Some((next_oid, val)) = response.varbinds.next() {
-                    // snmp2 v0.3.x: next_oid.iter() returns Option<impl Iterator<Item=u64>>
-                    // unwrap the Option, then map u64 -> u32
-                    let next_arcs: Vec<u32> = match next_oid.iter() {
-                        Some(it) => it.map(|v| v as u32).collect(),
-                        None => break,
-                    };
+                    let next_arcs: Vec<u32> = next_oid.iter().map(|v| v as u32).collect();
                     if next_arcs.len() <= base_oid.len()
                         || &next_arcs[..base_oid.len()] != base_oid
                     {
@@ -144,16 +138,16 @@ fn val_mac(map: &BTreeMap<u32, Value>, idx: u32) -> String {
 fn main() {
     let args = Args::parse();
 
-    let addr: SocketAddr = format!("{}:{}", args.host, args.port)
-        .parse()
-        .unwrap_or_else(|_| { eprintln!("ERROR: invalid host/port"); std::process::exit(1); });
+    let addr = format!("{}:{}", args.host, args.port);
+    let community = args.community.as_bytes();
 
-    let community = args.community.as_bytes().to_vec();
-
-    // snmp2 v0.3.x SyncSession::new(addr, community: &[u8], timeout, retries)
-    // community must be &[u8], addr must be SocketAddr
-    let mut sess = SyncSession::new(addr, &community, Some(Duration::from_secs(3)), 2)
-        .unwrap_or_else(|e| { eprintln!("ERROR: cannot create session: {e}"); std::process::exit(1); });
+    let mut sess = SyncSession::new(
+        Version::V2c,
+        addr.as_str(),
+        community,
+        Some(Duration::from_secs(3)),
+        2,
+    ).unwrap_or_else(|e| { eprintln!("ERROR: cannot create session: {e}"); std::process::exit(1); });
 
     let descr   = snmp_walk(&mut sess, OID_DESCR);
     let speed   = snmp_walk(&mut sess, OID_SPEED);
