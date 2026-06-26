@@ -20,17 +20,17 @@ struct Args {
     port: u16,
 }
 
-const OID_DESCR:   &[u32] = &[1,3,6,1,2,1,2,2,1,2];
-const OID_SPEED:   &[u32] = &[1,3,6,1,2,1,2,2,1,5];
-const OID_MTU:     &[u32] = &[1,3,6,1,2,1,2,2,1,4];
-const OID_MAC:     &[u32] = &[1,3,6,1,2,1,2,2,1,6];
-const OID_ADMIN:   &[u32] = &[1,3,6,1,2,1,2,2,1,7];
-const OID_OPER:    &[u32] = &[1,3,6,1,2,1,2,2,1,8];
-const OID_IN_OCT:  &[u32] = &[1,3,6,1,2,1,2,2,1,10];
-const OID_OUT_OCT: &[u32] = &[1,3,6,1,2,1,2,2,1,16];
-const OID_IN_PKT:  &[u32] = &[1,3,6,1,2,1,2,2,1,11];
-const OID_IN_ERR:  &[u32] = &[1,3,6,1,2,1,2,2,1,14];
-const OID_OUT_ERR: &[u32] = &[1,3,6,1,2,1,2,2,1,20];
+const OID_DESCR:   &[u64] = &[1,3,6,1,2,1,2,2,1,2];
+const OID_SPEED:   &[u64] = &[1,3,6,1,2,1,2,2,1,5];
+const OID_MTU:     &[u64] = &[1,3,6,1,2,1,2,2,1,4];
+const OID_MAC:     &[u64] = &[1,3,6,1,2,1,2,2,1,6];
+const OID_ADMIN:   &[u64] = &[1,3,6,1,2,1,2,2,1,7];
+const OID_OPER:    &[u64] = &[1,3,6,1,2,1,2,2,1,8];
+const OID_IN_OCT:  &[u64] = &[1,3,6,1,2,1,2,2,1,10];
+const OID_OUT_OCT: &[u64] = &[1,3,6,1,2,1,2,2,1,16];
+const OID_IN_PKT:  &[u64] = &[1,3,6,1,2,1,2,2,1,11];
+const OID_IN_ERR:  &[u64] = &[1,3,6,1,2,1,2,2,1,14];
+const OID_OUT_ERR: &[u64] = &[1,3,6,1,2,1,2,2,1,20];
 
 fn fmt_bytes(b: u64) -> String {
     if b >= 1_073_741_824 { format!("{:.1} GB", b as f64 / 1_073_741_824.0) }
@@ -66,22 +66,22 @@ fn fmt_num(n: u64) -> String {
     result.chars().rev().collect()
 }
 
-fn snmp_walk(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'static>> {
+fn snmp_walk(sess: &mut SyncSession, base_oid: &[u64]) -> BTreeMap<u32, Value<'static>> {
     let mut map = BTreeMap::new();
-    let mut current: Vec<u32> = base_oid.to_vec();
+    let mut current: Vec<u64> = base_oid.to_vec();
 
     loop {
         let oid = Oid::from(current.as_slice());
         match sess.getnext(&oid) {
             Ok(response) => {
                 if let Some((next_oid, val)) = response.varbinds.next() {
-                    let next_arcs: Vec<u32> = next_oid.iter().map(|v| v as u32).collect();
+                    let next_arcs: Vec<u64> = next_oid.iter().collect();
                     if next_arcs.len() <= base_oid.len()
                         || &next_arcs[..base_oid.len()] != base_oid
                     {
                         break;
                     }
-                    let idx: u32 = *next_arcs.last().unwrap();
+                    let idx: u32 = *next_arcs.last().unwrap() as u32;
                     let owned: Value<'static> = match val {
                         Value::Integer(i)      => Value::Integer(i),
                         Value::Counter32(i)    => Value::Counter32(i),
