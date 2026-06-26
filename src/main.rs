@@ -21,17 +21,18 @@ struct Args {
     port: u16,
 }
 
-const OID_DESCR:   &[u32] = &[1,3,6,1,2,1,2,2,1,2];
-const OID_SPEED:   &[u32] = &[1,3,6,1,2,1,2,2,1,5];
-const OID_MTU:     &[u32] = &[1,3,6,1,2,1,2,2,1,4];
-const OID_MAC:     &[u32] = &[1,3,6,1,2,1,2,2,1,6];
-const OID_ADMIN:   &[u32] = &[1,3,6,1,2,1,2,2,1,7];
-const OID_OPER:    &[u32] = &[1,3,6,1,2,1,2,2,1,8];
-const OID_IN_OCT:  &[u32] = &[1,3,6,1,2,1,2,2,1,10];
-const OID_OUT_OCT: &[u32] = &[1,3,6,1,2,1,2,2,1,16];
-const OID_IN_PKT:  &[u32] = &[1,3,6,1,2,1,2,2,1,11];
-const OID_IN_ERR:  &[u32] = &[1,3,6,1,2,1,2,2,1,14];
-const OID_OUT_ERR: &[u32] = &[1,3,6,1,2,1,2,2,1,20];
+// OIDs encoded as BER bytes for snmp 0.2 (each arc ≤127 fits in one byte)
+const OID_DESCR:   &[u8] = &[1,3,6,1,2,1,2,2,1,2];
+const OID_SPEED:   &[u8] = &[1,3,6,1,2,1,2,2,1,5];
+const OID_MTU:     &[u8] = &[1,3,6,1,2,1,2,2,1,4];
+const OID_MAC:     &[u8] = &[1,3,6,1,2,1,2,2,1,6];
+const OID_ADMIN:   &[u8] = &[1,3,6,1,2,1,2,2,1,7];
+const OID_OPER:    &[u8] = &[1,3,6,1,2,1,2,2,1,8];
+const OID_IN_OCT:  &[u8] = &[1,3,6,1,2,1,2,2,1,10];
+const OID_OUT_OCT: &[u8] = &[1,3,6,1,2,1,2,2,1,16];
+const OID_IN_PKT:  &[u8] = &[1,3,6,1,2,1,2,2,1,11];
+const OID_IN_ERR:  &[u8] = &[1,3,6,1,2,1,2,2,1,14];
+const OID_OUT_ERR: &[u8] = &[1,3,6,1,2,1,2,2,1,20];
 
 fn fmt_bytes(b: u64) -> String {
     if b >= 1_073_741_824 { format!("{:.1} GB", b as f64 / 1_073_741_824.0) }
@@ -67,21 +68,23 @@ fn fmt_num(n: u64) -> String {
     result.chars().rev().collect()
 }
 
-fn snmp_walk(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'static>> {
+// Walk an OID subtable; returns map of last-arc(u32) -> owned Value
+fn snmp_walk(sess: &mut SyncSession, base_oid: &[u8]) -> BTreeMap<u32, Value<'static>> {
     let mut map = BTreeMap::new();
-    let mut current = base_oid.to_vec();
+    let mut current: Vec<u8> = base_oid.to_vec();
 
     loop {
         match sess.getnext(&[current.as_slice()]) {
             Ok(response) => {
                 if let Some((oid, val)) = response.varbinds.next() {
-                    let oid_slice = oid.raw();
+                    let oid_slice: &[u8] = oid.raw();
+                    // stop if we walked out of the subtree
                     if oid_slice.len() <= base_oid.len()
                         || &oid_slice[..base_oid.len()] != base_oid
                     {
                         break;
                     }
-                    let idx = *oid_slice.last().unwrap();
+                    let idx: u32 = (*oid_slice.last().unwrap()).into();
                     let owned: Value<'static> = match val {
                         Value::Integer(i)      => Value::Integer(i),
                         Value::Counter32(i)    => Value::Counter32(i),
