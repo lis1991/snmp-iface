@@ -1,0 +1,149 @@
+name: Tag & Release
+
+# Запустите вручную: Actions → Tag & Release → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ github.event.inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ github.event.inputs.version }}
+          git push origin ${{ github.event.inputs.version }}
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: tag
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: snmp-iface-linux-x86_64
+            binary: snmp-iface
+            ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: snmp-iface-windows-x86_64
+            binary: snmp-iface.exe
+            ext: ".exe"
+
+    env:
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: "10"
+      CARGO_INCREMENTAL: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} \
+             dist/${{ matrix.artifact }}${{ matrix.ext }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}${{ matrix.ext }}
+
+  release:
+    name: Publish Release
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          name: "snmp-iface ${{ needs.tag.outputs.tag }}"
+          body: |
+            ## 🚀 snmp-iface ${{ needs.tag.outputs.tag }}
+
+            SNMP-просмотрщик сетевых интерфейсов — pure Rust, без `libsnmp`, чистый `SNMPv2c` по RFC 1213.
+
+            ### 📦 Установка
+
+            ```bash
+            # Linux
+            chmod +x snmp-iface-linux-x86_64
+            ./snmp-iface-linux-x86_64 192.168.1.1 public 161
+
+            # Windows
+            snmp-iface-windows-x86_64.exe 192.168.1.1 public 161
+            ```
+
+            ### 🔧 Сборка из исходников
+
+            ```bash
+            cargo build --release
+            ./target/release/snmp-iface <IP> [community] [port]
+            ```
+
+            ### 📋 OID (из `ifTable`, RFC 1213)
+
+            | OID | Поле | Описание |
+            |-----|------|----------|
+            | `.1.3.6.1.2.1.2.2.1.2`  | `ifDescr`        | Имя интерфейса |
+            | `.1.3.6.1.2.1.2.2.1.5`  | `ifSpeed`        | Скорость |
+            | `.1.3.6.1.2.1.2.2.1.4`  | `ifMtu`          | MTU |
+            | `.1.3.6.1.2.1.2.2.1.6`  | `ifPhysAddress`  | MAC-адрес |
+            | `.1.3.6.1.2.1.2.2.1.7`  | `ifAdminStatus`  | Admin-статус |
+            | `.1.3.6.1.2.1.2.2.1.8`  | `ifOperStatus`   | Oper-статус |
+            | `.1.3.6.1.2.1.2.2.1.10` | `ifInOctets`     | Вх. трафик |
+            | `.1.3.6.1.2.1.2.2.1.16` | `ifOutOctets`    | Исх. трафик |
+            | `.1.3.6.1.2.1.2.2.1.11` | `ifInUcastPkts`  | Вх. пакеты |
+            | `.1.3.6.1.2.1.2.2.1.17` | `ifOutUcastPkts` | Исх. пакеты |
+            | `.1.3.6.1.2.1.2.2.1.14` | `ifInErrors`     | Вх. ошибки |
+            | `.1.3.6.1.2.1.2.2.1.20` | `ifOutErrors`    | Исх. ошибки |
+          generate_release_notes: false
+          files: |
+            dist/snmp-iface-linux-x86_64
+            dist/snmp-iface-windows-x86_64.exe
+          draft: false
+          prerelease: false
