@@ -22,6 +22,12 @@ jobs:
             artifact: snmp-iface-windows-x86_64
             binary: snmp-iface.exe
 
+    env:
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: "10"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+
     steps:
       - uses: actions/checkout@v4
 
