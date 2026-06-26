@@ -1,0 +1,14 @@
+[package]
+name = "snmp-iface"
+version = "0.1.0"
+edition = "2021"
+description = "SNMP network interface table viewer"
+license = "MIT"
+
+[[bin]]
+name = "snmp-iface"
+path = "src/main.rs"
+
+[dependencies]
+snmp = "0.2"
+clap = { version = "4", features = ["derive"] }
