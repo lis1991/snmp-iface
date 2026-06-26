@@ -66,16 +66,27 @@ fn fmt_num(n: u64) -> String {
     result.chars().rev().collect()
 }
 
+// FIX 1: getnext() expects &Oid (not &Result<Oid,..>), so we parse first with ?/unwrap_or.
+// FIX 2: next_oid.iter() returns Option<impl Iterator>, call .into_iter().flatten() or just
+//         match on the Option; easiest is to call iter() on the slice we already have.
 fn snmp_walk(sess: &mut SyncSession, base_oid: &[u64]) -> BTreeMap<u32, Value<'static>> {
     let mut map = BTreeMap::new();
     let mut current: Vec<u64> = base_oid.to_vec();
 
     loop {
-        let oid = Oid::from(current.as_slice());
+        // FIX 1: parse OID first, then borrow it.
+        let oid = match Oid::from_slice(current.as_slice()) {
+            Ok(o)  => o,
+            Err(_) => break,
+        };
         match sess.getnext(&oid) {
             Ok(response) => {
                 if let Some((next_oid, val)) = response.varbinds.next() {
-                    let next_arcs: Vec<u64> = next_oid.iter().collect();
+                    // FIX 2: next_oid.iter() -> Option<Iterator>; use into_iter().flatten()
+                    let next_arcs: Vec<u64> = next_oid.iter()
+                        .into_iter()
+                        .flatten()
+                        .collect();
                     if next_arcs.len() <= base_oid.len()
                         || &next_arcs[..base_oid.len()] != base_oid
                     {
@@ -141,8 +152,9 @@ fn main() {
     let addr = format!("{}:{}", args.host, args.port);
     let community = args.community.as_bytes();
 
-    let mut sess = SyncSession::new(
-        Version::V2c,
+    // FIX 3: SyncSession::new is private in snmp2 v0.5.0; use the public builder V2Builder.
+    // FIX 4: Version::V2c -> Version::V2C  (was already hinted by rustc).
+    let mut sess = SyncSession::v2c(
         addr.as_str(),
         community,
         Some(Duration::from_secs(3)),
