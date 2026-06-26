@@ -67,7 +67,7 @@ fn fmt_num(n: u64) -> String {
     result.chars().rev().collect()
 }
 
-fn snmp_walk<'a>(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'static>> {
+fn snmp_walk(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'static>> {
     let mut map = BTreeMap::new();
     let mut current = base_oid.to_vec();
 
@@ -75,7 +75,7 @@ fn snmp_walk<'a>(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Valu
         match sess.getnext(&[current.as_slice()]) {
             Ok(response) => {
                 if let Some((oid, val)) = response.varbinds.next() {
-                    let oid_slice = oid.as_raw();
+                    let oid_slice = oid.raw();
                     if oid_slice.len() <= base_oid.len()
                         || &oid_slice[..base_oid.len()] != base_oid
                     {
@@ -83,11 +83,11 @@ fn snmp_walk<'a>(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Valu
                     }
                     let idx = *oid_slice.last().unwrap();
                     let owned: Value<'static> = match val {
-                        Value::Integer(i)     => Value::Integer(i),
-                        Value::Counter32(i)   => Value::Counter32(i),
-                        Value::Gauge32(i)     => Value::Gauge32(i),
-                        Value::TimeTicks(i)   => Value::TimeTicks(i),
-                        Value::OctetString(s) => {
+                        Value::Integer(i)      => Value::Integer(i),
+                        Value::Counter32(i)    => Value::Counter32(i),
+                        Value::Unsigned32(i)   => Value::Unsigned32(i),
+                        Value::Timeticks(i)    => Value::Timeticks(i),
+                        Value::OctetString(s)  => {
                             let v: Vec<u8> = s.to_vec();
                             Value::OctetString(Box::leak(v.into_boxed_slice()))
                         }
@@ -107,9 +107,9 @@ fn snmp_walk<'a>(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Valu
 
 fn val_u32(map: &BTreeMap<u32, Value>, idx: u32) -> u32 {
     match map.get(&idx) {
-        Some(Value::Integer(v))   => *v as u32,
-        Some(Value::Counter32(v)) => *v,
-        Some(Value::Gauge32(v))   => *v,
+        Some(Value::Integer(v))    => *v as u32,
+        Some(Value::Counter32(v))  => *v,
+        Some(Value::Unsigned32(v)) => *v,
         _ => 0,
     }
 }
