@@ -72,11 +72,16 @@ fn snmp_walk(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'s
     let mut current: Vec<u32> = base_oid.to_vec();
 
     loop {
-        let oid = snmp2::ObjectIdentifier::from_slice(&current);
-        match sess.getnext(&[oid]) {
+        // snmp2 v0.3.x: OID is passed as &[u32] directly, no ObjectIdentifier wrapper
+        match sess.getnext(&[current.as_slice()]) {
             Ok(response) => {
                 if let Some((next_oid, val)) = response.varbinds.next() {
-                    let next_arcs: Vec<u32> = next_oid.iter().collect();
+                    // snmp2 v0.3.x: next_oid.iter() returns Option<impl Iterator<Item=u64>>
+                    // unwrap the Option, then map u64 -> u32
+                    let next_arcs: Vec<u32> = match next_oid.iter() {
+                        Some(it) => it.map(|v| v as u32).collect(),
+                        None => break,
+                    };
                     if next_arcs.len() <= base_oid.len()
                         || &next_arcs[..base_oid.len()] != base_oid
                     {
@@ -143,9 +148,11 @@ fn main() {
         .parse()
         .unwrap_or_else(|_| { eprintln!("ERROR: invalid host/port"); std::process::exit(1); });
 
-    let community = args.community.as_bytes();
+    let community = args.community.as_bytes().to_vec();
 
-    let mut sess = SyncSession::new(addr, community, Some(Duration::from_secs(3)), 2)
+    // snmp2 v0.3.x SyncSession::new(addr, community: &[u8], timeout, retries)
+    // community must be &[u8], addr must be SocketAddr
+    let mut sess = SyncSession::new(addr, &community, Some(Duration::from_secs(3)), 2)
         .unwrap_or_else(|e| { eprintln!("ERROR: cannot create session: {e}"); std::process::exit(1); });
 
     let descr   = snmp_walk(&mut sess, OID_DESCR);
