@@ -76,7 +76,7 @@ fn snmp_walk(sess: &mut SyncSession, base_oid: &[u64]) -> BTreeMap<u32, Value<'s
             Err(_) => break,
         };
         match sess.getnext(&oid) {
-            Ok(response) => {
+            Ok(mut response) => {
                 if let Some((next_oid, val)) = response.varbinds.next() {
                     let next_arcs: Vec<u64> = next_oid.iter()
                         .into_iter()
