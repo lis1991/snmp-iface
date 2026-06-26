@@ -10,5 +10,5 @@ name = "snmp-iface"
 path = "src/main.rs"
 
 [dependencies]
-snmp = "0.2"
+snmp2 = "0.3"
 clap = { version = "4", features = ["derive"] }

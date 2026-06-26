@@ -1,5 +1,5 @@
 use clap::Parser;
-use snmp::{SyncSession, Value};
+use snmp2::{SyncSession, Value};
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -21,7 +21,6 @@ struct Args {
     port: u16,
 }
 
-// OID arcs (each value fits in u32)
 const OID_DESCR:   &[u32] = &[1,3,6,1,2,1,2,2,1,2];
 const OID_SPEED:   &[u32] = &[1,3,6,1,2,1,2,2,1,5];
 const OID_MTU:     &[u32] = &[1,3,6,1,2,1,2,2,1,4];
@@ -68,20 +67,18 @@ fn fmt_num(n: u64) -> String {
     result.chars().rev().collect()
 }
 
-// Walk an OID subtable; returns map of last-arc(u32) -> owned Value
-fn snmp_walk(sess: &mut SyncSession, base_arcs: &[u32]) -> BTreeMap<u32, Value<'static>> {
+fn snmp_walk(sess: &mut SyncSession, base_oid: &[u32]) -> BTreeMap<u32, Value<'static>> {
     let mut map = BTreeMap::new();
-    let mut current_arcs: Vec<u32> = base_arcs.to_vec();
+    let mut current: Vec<u32> = base_oid.to_vec();
 
     loop {
-        let oid = snmp::ObjectIdentifier::from_slice(&current_arcs);
+        let oid = snmp2::ObjectIdentifier::from_slice(&current);
         match sess.getnext(&[oid]) {
             Ok(response) => {
                 if let Some((next_oid, val)) = response.varbinds.next() {
-                    let next_arcs = next_oid.iter().collect::<Vec<u32>>();
-                    // stop if we walked out of the subtree
-                    if next_arcs.len() <= base_arcs.len()
-                        || &next_arcs[..base_arcs.len()] != base_arcs
+                    let next_arcs: Vec<u32> = next_oid.iter().collect();
+                    if next_arcs.len() <= base_oid.len()
+                        || &next_arcs[..base_oid.len()] != base_oid
                     {
                         break;
                     }
@@ -98,7 +95,7 @@ fn snmp_walk(sess: &mut SyncSession, base_arcs: &[u32]) -> BTreeMap<u32, Value<'
                         _ => Value::Integer(0),
                     };
                     map.insert(idx, owned);
-                    current_arcs = next_arcs;
+                    current = next_arcs;
                 } else {
                     break;
                 }
